@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GESS 2026 · Investment Results</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1b2e; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.topbar { background: #1B3A6B; padding: 16px 40px; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #009B8D; flex-shrink: 0; }
+.topbar-title { font-size: 20px; font-weight: 700; }
+.topbar-sub { font-size: 12px; opacity: 0.65; margin-top: 3px; }
+.topbar-right { display: flex; align-items: center; gap: 14px; }
+.badge { font-size: 12px; padding: 5px 16px; border-radius: 20px; font-weight: 700; letter-spacing: 0.5px; }
+.badge.live { background: #C8102E; color: #fff; animation: pulse 1.8s infinite; }
+.badge.final { background: #009B8D; color: #fff; }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #5DCAA5; animation: pulse 2s infinite; }
+.sync-dot.err { background: #F09595; animation: none; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.main { flex: 1; display: grid; grid-template-columns: 1fr 320px; min-height: 0; }
+
+.left { padding: 28px 28px 20px 36px; display: flex; flex-direction: column; min-height: 0; }
+.section-label { font-size: 11px; font-weight: 700; color: #009B8D; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; flex-shrink: 0; }
+.chart-wrap { flex: 1; position: relative; min-height: 0; }
+
+.right { background: #112040; border-left: 1px solid #1e3a60; padding: 28px 20px 20px; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.rank-list { flex: 1; }
+.rank-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; margin-bottom: 8px; background: #1a2f50; transition: all 0.4s; }
+.rank-row.first { background: #0d3d30; border: 1.5px solid #009B8D; }
+.rank-row.second { background: #1e3555; }
+.rank-num { font-size: 18px; font-weight: 700; width: 28px; text-align: center; color: #5a7fa8; }
+.rank-num.gold { color: #EF9F27; }
+.rank-num.silver { color: #aab4c0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.rank-name { font-size: 15px; font-weight: 600; flex: 1; color: #e8edf2; }
+.rank-name.first { color: #fff; font-size: 17px; }
+.rank-bar-wrap { width: 70px; height: 5px; background: #2a4060; border-radius: 3px; overflow: hidden; }
+.rank-bar { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+.rank-amt { font-size: 15px; font-weight: 700; width: 60px; text-align: right; color: #c8d8e8; }
+.rank-amt.first { color: #fff; font-size: 17px; }
+
+.banner { display: none; padding: 12px 20px; font-size: 14px; font-weight: 600; text-align: center; flex-shrink: 0; }
+.banner.winner { background: #0d3d30; border-top: 1.5px solid #009B8D; color: #5DCAA5; }
+.banner.tie { background: #3d2d0d; border-top: 1.5px solid #EF9F27; color: #FAC775; }
+
+.waiting { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+.waiting-text { font-size: 16px; color: #4a6a8a; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="topbar-title">2026 GESS · Mock Pitch Investment Results</div>
+    <div class="topbar-sub">June 2, 2026 · 18:00–19:00 · W2-1 Lounge, #200</div>
+  </div>
+  <div class="topbar-right">
+    <div class="sync-dot" id="syncDot"></div>
+    <span class="badge live" id="statusBadge">LIVE</span>
+  </div>
+</div>
+
+<div class="main" id="mainContent" style="display:none;">
+  <div class="left">
+    <div class="section-label">Investment Raised per Team</div>
+    <div class="chart-wrap">
+      <canvas id="barChart" role="img" aria-label="Bar chart showing total investment raised by each team"></canvas>
+    </div>
+  </div>
+  <div class="right">
+    <div class="section-label">Live Ranking</div>
+    <div class="rank-list" id="rankingSection"></div>
+  </div>
+</div>
+
+<div class="waiting" id="waitingState">
+  <div style="font-size:40px;">⏳</div>
+  <div class="waiting-text">Waiting for investment data...</div>
+</div>
+
+<div class="banner" id="banner"></div>
+
+<script>
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby2CisBC_nQalhQdocNveu_P85Uj-vRi3j6esQ2s_26JmcxtItRVQGdluYynJRZSOzeiQ/exec";
+const TEAMS = ["CUPID","Gollem","conVRsation","Habitus","MARKS"];
+const COLORS = ["#378ADD","#1D9E75","#D85A30","#7F77DD","#BA7517"];
+
+let matrix = {};
+TEAMS.forEach(inv => { matrix[inv] = {}; TEAMS.forEach(rec => { matrix[inv][rec] = 0; }); });
+let chart;
+
+function getColTotal(team) {
+  return TEAMS.reduce((s, inv) => s + (matrix[inv][team] || 0), 0);
+}
+
+function buildChart() {
+  const ctx = document.getElementById('barChart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: TEAMS,
+      datasets: [{
+        data: TEAMS.map(() => 0),
+        backgroundColor: COLORS.map(c => c + 'CC'),
+        borderColor: COLORS,
+        borderWidth: 2,
+        borderRadius: 6,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 400 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ' $' + ctx.parsed.y.toLocaleString() } }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => '$'+v, font:{size:13}, color:'#8aa0be' },
+          grid: { color: 'rgba(255,255,255,0.06)' }
+        },
+        x: {
+          ticks: { font:{size:14,weight:'600'}, color:'#c8d8e8' },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
+function updateDisplay() {
+  const totals = Object.fromEntries(TEAMS.map(t => [t, getColTotal(t)]));
+  const hasData = TEAMS.some(t => totals[t] > 0);
+
+  document.getElementById('mainContent').style.display = hasData ? 'grid' : 'none';
+  document.getElementById('waitingState').style.display = hasData ? 'none' : 'flex';
+  if (!hasData) return;
+
+  chart.data.datasets[0].data = TEAMS.map(t => totals[t]);
+  chart.update('active');
+
+  const sorted = [...TEAMS].sort((a,b) => totals[b]-totals[a]);
+  const max = totals[sorted[0]] || 1;
+  const section = document.getElementById('rankingSection');
+  section.innerHTML = '';
+
+  sorted.forEach((team, i) => {
+    const amt = totals[team];
+    const tidx = TEAMS.indexOf(team);
+    const isFirst = i === 0 && amt > 0;
+    const isSecond = i === 1 && amt > 0;
+    const row = document.createElement('div');
+    row.className = 'rank-row' + (isFirst?' first':isSecond?' second':'');
+    row.innerHTML = `
+      <span class="rank-num ${isFirst?'gold':isSecond?'silver':''}">
+        ${isFirst?'🏆':isSecond?'🥈':i+1}
+      </span>
+      <span class="dot" style="background:${COLORS[tidx]}"></span>
+      <span class="rank-name ${isFirst?'first':''}">${team}</span>
+      <div class="rank-bar-wrap">
+        <div class="rank-bar" style="width:${amt>0?Math.round(amt/max*100):0}%;background:${COLORS[tidx]}"></div>
+      </div>
+      <span class="rank-amt ${isFirst?'first':''}">${amt>0?'$'+amt.toLocaleString():'–'}</span>
+    `;
+    section.appendChild(row);
+  });
+
+  const totalCells = TEAMS.length * (TEAMS.length - 1);
+  const filledCells = TEAMS.reduce((s, inv) =>
+    s + TEAMS.filter(rec => rec !== inv && matrix[inv][rec] > 0).length, 0);
+  const allDone = filledCells === totalCells;
+  const badge = document.getElementById('statusBadge');
+  badge.className = allDone ? 'badge final' : 'badge live';
+  badge.textContent = allDone ? 'FINAL' : 'LIVE';
+
+  const banner = document.getElementById('banner');
+  const top = totals[sorted[0]];
+  const second = totals[sorted[1]];
+  if (allDone && top > 0) {
+    banner.style.display = 'block';
+    if (top === second) {
+      banner.className = 'banner tie';
+      banner.innerHTML = `⚠️ TIE — <strong>${sorted[0]}</strong> and <strong>${sorted[1]}</strong> both raised $${top.toLocaleString()} — Tiebreaker Pitch required!`;
+    } else {
+      banner.className = 'banner winner';
+      banner.innerHTML = `🏆 Investment Winner: <strong>${sorted[0]}</strong> raised $${top.toLocaleString()} — NVIDIA visit secured!`;
+    }
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+async function loadFromSheet() {
+  try {
+    const res = await fetch(SCRIPT_URL + '?t=' + Date.now());
+    const data = await res.json();
+    TEAMS.forEach(inv => TEAMS.forEach(rec => {
+      matrix[inv][rec] = (data[inv] && data[inv][rec]) ? Number(data[inv][rec]) : 0;
+    }));
+    updateDisplay();
+    document.getElementById('syncDot').className = 'sync-dot';
+  } catch(e) {
+    document.getElementById('syncDot').className = 'sync-dot err';
+  }
+}
+
+buildChart();
+loadFromSheet();
+setInterval(loadFromSheet, 2000);
+</script>
+</body>
+</html>
