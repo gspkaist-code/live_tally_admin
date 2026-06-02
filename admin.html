@@ -83,7 +83,7 @@ tbody tr:first-child td { border-top: none; }
 </div>
 
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbynlcuZ5AkEFMh8ly3Qd3Ax_SFNOg0GId_IwIyFfEiW7iiSd0tKzbbOpGDPsqafaYQQvw/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwXt1Llrubpp9FQuuyZ_rYJA-N4viKxW81AJHaEbc4UXy6OfyxW-6WliS0l51Rhup0_WA/exec";
 const TEAMS = ["CUPID","Gollem","conVRsation","Habitus","MARKS"];
 const COLORS = ["#378ADD","#1D9E75","#D85A30","#7F77DD","#BA7517"];
 const BUDGET = 720;
@@ -102,12 +102,8 @@ function setSyncStatus(msg, cls) {
 async function saveToSheet() {
   setSyncStatus('Saving...', '');
   try {
-    await fetch(SCRIPT_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(matrix)
-    });
+    const encoded = encodeURIComponent(JSON.stringify(matrix));
+    await fetch(SCRIPT_URL + '?action=save&data=' + encoded);
     setSyncStatus('Saved ✓', 'ok');
   } catch(e) {
     setSyncStatus('Save failed', 'err');
